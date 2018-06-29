@@ -1,54 +1,58 @@
-# AWS IoT Controlled publish period 
-# Created at 2017-10-03 08:49:48.182639
+/*
+Measuring AC Current Using ACS712
+*/
+const int sensorIn = A0;
+float mVperAmp = 66.0; // use 100 for 20A Module and 66 for 30A Module
 
-import streams
-import json
-from wireless import wifi
 
-# choose a wifi chip supporting secure sockets and client certificates
-from espressif.esp32net import esp32wifi as wifi_driver
+float Voltage = 0;
+float VRMS = 0;
+float AmpsRMS = 0;
 
-# import aws iot module
-from aws.iot import iot
 
-# import helpers functions to easily load keys, certificates and thing configuration
-import helpers
 
-# THING KEY AND CERTIFICATE FILE MUST BE PLACED INSIDE PROJECT FOLDER 
-new_resource('private.pem.key')
-new_resource('certificate.pem.crt')
-# SET THING CONFIGURATION INSIDE THE FOLLOWING JSON FILE
-new_resource('thing.conf.json')
+void setup(){ 
+ Serial.begin(9600);
+}
 
-# define a callback for shadow updates
-def shadow_callback(requested):
-    global publish_period
-    print('requested publish period:', requested['publish_period'])
-    publish_period = requested['publish_period']
-    return {'publish_period': publish_period}
+void loop(){
+ 
+ 
+ Voltage = getVPP();
+ VRMS = (Voltage/2.0) *0.707; 
+ AmpsRMS = (VRMS * 1000)/mVperAmp;
+ Serial.print(AmpsRMS-0.078, 5);
+ Serial.println(" Amps RMS");
 
-streams.serial()
-wifi_driver.auto_init()
+}
 
-print('connecting to wifi...')
-# place here your wifi configuration
-wifi.link("ap403",wifi.WIFI_WPA2,"8807013837")
-
-pkey, clicert = helpers.load_key_cert('private.pem.key', 'certificate.pem.crt')
-thing_conf = helpers.load_thing_conf()
-publish_period = 1000
-
-# create aws iot thing instance, connect to mqtt broker, set shadow update callback and start mqtt reception loop
-thing = iot.Thing(thing_conf['endpoint'], thing_conf['mqttid'], clicert, pkey, thingname=thing_conf['thingname'])
-print('connecting to mqtt broker...')
-thing.mqtt.connect()
-thing.on_shadow_request(shadow_callback)
-thing.mqtt.loop()
-
-thing.update_shadow({'publish_period': publish_period})
-
-while True:
-    print('publish random sample...')
-    thing.mqtt.publish("dev/sample", json.dumps({ 'asample': random(0,10) }))
-    sleep(publish_period)
-
+float getVPP()
+{
+  float result;
+  
+  int readValue;             //value read from the sensor
+  int maxValue = 0;          // store max value here
+  int minValue = 1024;          // store min value here
+  
+   uint32_t start_time = millis();
+   while((millis()-start_time) < 1000) //sample for 1 Sec
+   {
+       readValue = analogRead(sensorIn);
+       // see if you have a new maxValue
+       if (readValue > maxValue) 
+       {
+           /*record the maximum sensor value*/
+           maxValue = readValue;
+       }
+       if (readValue < minValue) 
+       {
+           /*record the maximum sensor value*/
+           minValue = readValue;
+       }
+   }
+   
+   // Subtract min from max
+   result = ((maxValue - minValue) * 5.0)/1024.0;
+      
+   return result;
+ }
